@@ -1,12 +1,10 @@
 import cv2
 import mediapipe as mp
-import pygame 
 
 # Inicialización de MediaPipe y utilidades de dibujo
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
-pygame.mixer.init()
 
 cap = cv2.VideoCapture(0) # trabajar con la camara conectada a la pc
 
