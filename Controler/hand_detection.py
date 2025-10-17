@@ -7,7 +7,8 @@ import os
 mp_hands = mp.solutions.hands
 
 # Cargar imágenes
-image_folder = "../images"
+# Usar ruta robusta relativa al archivo para evitar problemas de mayúsculas/minúsculas o cwd
+image_folder = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "Images"))
 background = cv2.imread(os.path.join(image_folder, "background.jpg"))
 right_hand_image = cv2.imread(os.path.join(image_folder, "right_hand.png"), cv2.IMREAD_UNCHANGED)
 left_hand_image = cv2.imread(os.path.join(image_folder, "left_hand.png"), cv2.IMREAD_UNCHANGED)
@@ -15,7 +16,11 @@ pelota = cv2.imread(os.path.join(image_folder, "pelota.png"), cv2.IMREAD_UNCHANG
 
 # Redimensionar el fondo y las imágenes de los guantes
 camera_width, camera_height = 640, 480
-background = cv2.resize(background, (camera_width, camera_height))
+# Si no hay fondo, usar un lienzo negro para evitar fallos
+if background is None:
+    background = np.zeros((camera_height, camera_width, 3), dtype=np.uint8)
+else:
+    background = cv2.resize(background, (camera_width, camera_height))
 right_hand_image = cv2.resize(right_hand_image, (120, 120))  # Ajustar tamaño del guante derecho
 left_hand_image = cv2.resize(left_hand_image, (120, 120))  # Ajustar tamaño del guante izquierdo
 pelota = cv2.resize(pelota, (120, 120))  # Ajustar tamaño de la pelota
@@ -97,7 +102,14 @@ with mp_hands.Hands(
         if current_left_hand_position:
             last_left_hand_position = current_left_hand_position
 
-        # Dibujar los guantes en las últimas posiciones conocidas
+        # Orden de pintado: fondo -> pelota -> manos (manos siempre arriba)
+        # Dibujar la pelota de fútbol centrada en pantalla (debajo de las manos)
+        if pelota is not None:
+            px = (camera_width - pelota.shape[1]) // 2
+            py = (camera_height - pelota.shape[0]) // 2
+            overlay_image(game_frame, pelota, px, py)
+
+        # Dibujar los guantes en las últimas posiciones conocidas (encima de todo)
         if last_right_hand_position:
             overlay_image(game_frame, right_hand_image, last_right_hand_position[0], last_right_hand_position[1])
         if last_left_hand_position:
