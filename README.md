@@ -23,7 +23,6 @@ Este proyecto utiliza la cámara web para detectar las manos en todo momento par
 
 1. Ejecuta el script principal:
    ```bash
-   cd Controler
    python -m Controler.hand_detection.py
    ```
 2. Coloca tus manos frente a la cámara y empieza a moverla para evitar un gol.
