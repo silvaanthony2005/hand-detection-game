@@ -29,12 +29,7 @@ class GameRenderer:
         self.right_hand_image = resize_if(self.right_hand_image, (120, 120))
         self.left_hand_image = resize_if(self.left_hand_image, (120, 120))
         self.pelota = resize_if(self.pelota, (120, 120))
-
-        if self.pelota is None:
-            print("ERROR: No se pudo cargar la pelota")
-        else:
-            print(f"Pelota cargada - Shape: {self.pelota.shape}")
-
+        
         # Ventana
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
 
