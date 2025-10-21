@@ -34,4 +34,10 @@ Este proyecto utiliza la cámara web para detectar las manos en todo momento par
 - El programa está configurado para detectar hasta dos manos simultáneamente.
 
 ## Por hacer
-- Hay que usar pygame para las animaciones y logica de juego lo cual luego sera pasado a unificar con opencv mediante asignacionde para su correcta implementacion
+- Usar motor de pygame en vez de opencv
+- Física de la pelota: Agregar movimiento y trayectoria
+- Detección de colisión: Entre manos y pelota
+- Sistema de puntuación: Contador de penales atajados
+- Sonidos: Usar pygame.mixer para efectos de audio
+- Estados del juego: jugando, game over
+
