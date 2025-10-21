@@ -94,8 +94,27 @@ class OptimizedHandTracker:
         return right, left
 
     def release(self):
-        # Liberar recursos de MediaPipe
+        # Liberar recursos de MediaPipe y limpiar buffers para reducir uso de RAM
         try:
-            self.hands.close()
+            if hasattr(self, 'hands') and self.hands is not None:
+                self.hands.close()
+        except Exception:
+            pass
+        # Vaciar buffers y referencias
+        try:
+            self.smoother.buffers.clear()
+        except Exception:
+            pass
+        try:
+            self.hands = None
+            self.mp_hands = None
+            self.smoother = None
+            self.tracker = None
+        except Exception:
+            pass
+        # Forzar recolección de basura como última medida (útil en equipos con poca RAM)
+        try:
+            import gc
+            gc.collect()
         except Exception:
             pass
