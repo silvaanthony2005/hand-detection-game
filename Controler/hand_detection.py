@@ -1,6 +1,11 @@
 import cv2
+<<<<<<< HEAD
+from Controler.optimized_tracker import OptimizedHandTracker
+from vista.game_render import GameRenderer
+=======
 from vista.game_render import GameRenderer
 from .optimized_tracker import OptimizedHandTracker
+>>>>>>> cad2fb467a449a0a4a43437b973b37313574c754
 
 # Tamaño de cámara (también usado por el renderizador)
 camera_width, camera_height = 640, 480
