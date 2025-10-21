@@ -23,10 +23,15 @@ Este proyecto utiliza la cámara web para detectar las manos en todo momento par
 
 1. Ejecuta el script principal:
    ```bash
-   python -m Controler.hand_detection.py
+   python run_game.py
    ```
 2. Coloca tus manos frente a la cámara y empieza a moverla para evitar un gol.
 
 ## Notas
+- solo con ejecutar el archivo run_game se lanza el programa evitando asi confuciones de lanzamiento y errores
+- se creo un archivo de test para evaluar funcionalidades aparte del codigo y avances que se quieran hacer
 - Asegúrate de que la cámara web esté conectada y funcione correctamente.
 - El programa está configurado para detectar hasta dos manos simultáneamente.
+
+## Por hacer
+- Hay que usar pygame para las animaciones y logica de juego lo cual luego sera pasado a unificar con opencv mediante asignacionde para su correcta implementacion
