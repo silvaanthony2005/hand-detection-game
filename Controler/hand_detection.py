@@ -1,34 +1,55 @@
 import cv2
-import mediapipe as mp
+from vista.game_render import GameRenderer
+from .optimized_tracker import OptimizedHandTracker
 
-# Inicialización de MediaPipe y utilidades de dibujo
-mp_hands = mp.solutions.hands
-mp_drawing = mp.solutions.drawing_utils
+# Tamaño de cámara (también usado por el renderizador)
+camera_width, camera_height = 640, 480
 
+# Parámetros de MediaPipe (se pasan al tracker)
+min_detection_confidence = 0.4
+min_tracking_confidence = 0.4
 
-cap = cv2.VideoCapture(0) # trabajar con la camara conectada a la pc
+# Configuración de la UI (manejada por GameRenderer)
+window_name = 'Hand Detection Game'
+renderer = GameRenderer(camera_width=camera_width, camera_height=camera_height, window_name=window_name)
 
-with mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5, 
-                    max_num_hands=2) as hands:
+# Captura de cámara
+cap = cv2.VideoCapture(0)
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+# Optimized tracker
+tracker = OptimizedHandTracker(
+    camera_width=camera_width,
+    camera_height=camera_height,
+    max_num_hands=2,
+    min_detection_confidence=min_detection_confidence,
+    min_tracking_confidence=min_tracking_confidence,
+    buffer_size=5
+)
 
-        frame = cv2.flip(frame, 1)
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+# Variables para almacenar las últimas posiciones conocidas
+last_right_hand_position = None
+last_left_hand_position = None
 
-        results = hands.process(rgb_frame)
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
 
-        if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                # Dibujar los landmarks de la mano
-                mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-        
-        cv2.imshow('Hand Detection for Game', frame) # Título actualizado
-        if cv2.waitKey(1) & 0xFF == 27: # Presiona ESC para salir
-            break
+    frame = cv2.flip(frame, 1)
+
+    # Usar el tracker optimizado (devuelve en pixeles ya ajustados)
+    right_pos, left_pos = tracker.process_frame(frame)
+
+    # Actualizar posiciones persistentes
+    if right_pos:
+        last_right_hand_position = right_pos
+    if left_pos:
+        last_left_hand_position = left_pos
+
+    # Renderizar (UI y eventos dentro del renderer)
+    if not renderer.render(last_right_hand_position, last_left_hand_position):
+        break
 
 cap.release()
-cv2.destroyAllWindows()
+tracker.release()
+renderer.cleanup()
