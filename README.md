@@ -18,6 +18,11 @@ Este proyecto utiliza la cámara web para detectar las manos y jugar atajando pe
 
 3. **Control de la Aplicación**:
    - Presiona la tecla `ESC` para salir del programa.
+   -Tecla 1: alterna la visualización de hitboxes.
+   -Tecla 2: alterna la rotación de la pelota.
+   -Tecla Enter: si la pelota está rotando e inicia el desplazamiento en dirección aleatoria.
+   -Colisión con manos: si cualquier mano toca la pelota, se cancela el desplazamiento y la pelota vuelve al centro
+   -Tecla F: alterna fullscreen.
 
 ## ¿Qué se integró?
 

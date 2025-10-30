@@ -34,6 +34,7 @@ tracker = OptimizedHandTracker(
     buffer_size=5
 )
 
+
 # Variables para almacenar las últimas posiciones conocidas
 last_right_hand_position = None
 last_left_hand_position = None
@@ -53,6 +54,9 @@ while cap.isOpened():
         last_right_hand_position = right_pos
     if left_pos:
         last_left_hand_position = left_pos
+
+    # Nota: la tecla '2' y la rotación de la pelota se gestionan dentro de PygameRenderer.
+    # Por tanto no necesitamos poll_inputs(), ball_state ni actualizar el ángulo aquí.
 
     # Renderizar (UI y eventos dentro del renderer)
     if not renderer.render(last_right_hand_position, last_left_hand_position):
