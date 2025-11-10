@@ -3,7 +3,7 @@ import math
 import random
 import pygame
 
-from vista.ball_animation import BallAnimation
+from vista.ball_animation import BallAnimation 
 
 
 class PygameRenderer:
@@ -14,100 +14,107 @@ class PygameRenderer:
 
         # Ventana inicial en modo ventana
         self.is_fullscreen = False
-        # Sugerencia de rendimiento: DOUBLEBUF y SCALED pueden ayudar en Windows
         try:
             self.screen = pygame.display.set_mode((self.width, self.height), pygame.DOUBLEBUF | pygame.SCALED)
         except Exception:
-            # Fallback seguro
             self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption(title)
         self._compute_fullscreen_scaler()
 
-        # Superficie lógica (canvas) con tamaño de cámara; mantiene coordenadas del tracker
         self.canvas = pygame.Surface((self.width, self.height)).convert_alpha()
-
-        # Clock para limitar FPS
         self.clock = pygame.time.Clock()
 
-        # Rutas de recursos desde la carpeta Images
+        # Rutas de recursos (asumiendo que la estructura de directorios funciona)
+        # Nota: La clase BallAnimation se asume importada y funcional.
         images_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "Images"))
 
+        # --- Carga de recursos (omitiendo la carga real si faltan archivos) ---
+        # Se asume que estos archivos existen en la ruta relativa.
         # Fondo
         bg_path = os.path.join(images_dir, "background.jpg")
-        self.background = pygame.image.load(bg_path).convert()
-        self.background = pygame.transform.scale(self.background, (self.width, self.height))
-
-        # Manos
-        rh_path = os.path.join(images_dir, "right_hand.png")
-        lh_path = os.path.join(images_dir, "left_hand.png")
-        self.right_hand_img = pygame.image.load(rh_path).convert_alpha()
-        self.left_hand_img = pygame.image.load(lh_path).convert_alpha()
-        self.right_hand_img = pygame.transform.smoothscale(self.right_hand_img, (120, 120))
-        self.left_hand_img = pygame.transform.smoothscale(self.left_hand_img, (120, 120))
-
-        # tamaño de las imágenes (se usan para hitboxes y para centrar)
+        self.background = pygame.Surface((self.width, self.height))
+        self.background.fill((10, 50, 80)) # Color de fondo temporal si no existe la imagen
+        try:
+             self.background = pygame.image.load(bg_path).convert()
+             self.background = pygame.transform.scale(self.background, (self.width, self.height))
+        except pygame.error:
+            print(f"Warning: Background image not found at {bg_path}")
+        
+        # Manos (usamos un rectángulo gris como fallback si faltan las imágenes)
         self.hand_w, self.hand_h = 120, 120
-        self.right_hand_img = pygame.transform.smoothscale(self.right_hand_img, (self.hand_w, self.hand_h))
-        self.left_hand_img = pygame.transform.smoothscale(self.left_hand_img, (self.hand_w, self.hand_h))
+        hand_fallback = pygame.Surface((self.hand_w, self.hand_h), pygame.SRCALPHA)
+        hand_fallback.fill((128, 128, 128, 150))
+        self.right_hand_img = hand_fallback
+        self.left_hand_img = hand_fallback
+        try:
+            rh_path = os.path.join(images_dir, "right_hand.png")
+            lh_path = os.path.join(images_dir, "left_hand.png")
+            self.right_hand_img = pygame.image.load(rh_path).convert_alpha()
+            self.left_hand_img = pygame.image.load(lh_path).convert_alpha()
+            self.right_hand_img = pygame.transform.smoothscale(self.right_hand_img, (self.hand_w, self.hand_h))
+            self.left_hand_img = pygame.transform.smoothscale(self.left_hand_img, (self.hand_w, self.hand_h))
+        except pygame.error:
+            print("Warning: Hand images not found, using fallback.")
 
         # Animación de pelota
         sprite_path = os.path.join(images_dir, "spritesheet_pelota.png")
-        self.ball_animation = BallAnimation(sprite_path)
+        # Usamos un dummy si BallAnimation no está disponible
+        try:
+             self.ball_animation = BallAnimation(sprite_path)
+        except NameError:
+             print("Error: BallAnimation class not found. Using dummy surface.")
+             class DummyBallAnimation:
+                def update(self): pass
+                def draw(self, surf, x, y): 
+                    surf.fill((255, 100, 0)) # Pelota naranja de fallback
+             self.ball_animation = DummyBallAnimation()
+        
         self.ball_w, self.ball_h = 132, 125
         self.ball_x = (self.width - self.ball_w) // 2
         self.ball_y = (self.height - self.ball_h) // 2
-        # Superficie temporal reutilizable para dibujar la pelota (evita crear cada frame)
         self._ball_surface = pygame.Surface((self.ball_w, self.ball_h), pygame.SRCALPHA)
 
-        # hitboxes: mano = caja basada en tamaño de la imagen; pelota = cuadrado inscrito en la circunferencia
+        # hitboxes
         self.hand_hitbox_size = max(1, int(max(self.hand_w, self.hand_h)))
-
-        # pelota: asignación manual del tamaño de la hitbox (en píxeles)
         self.ball_hitbox_size = 65
 
-        # Debug: mostrar hitboxes
         self.show_hitboxes = False
-
-        # Colisiones detectadas (marcador temporal)
         self.last_collision_time = 0
         self.collision_flash_ms = 400
         self.collision_hand = None
-
-        # Estado de rotación de la pelota (inactivo al inicio)
         self.ball_rotating = False
         self.ball_angle = 0.0
         self.ball_rotation_speed = 6.0
-        # Cache de rotaciones (solo cuando escala==1.0) para reducir CPU
         self._rotation_cache = {}
-        self._rotation_cache_step = 5  # grados por paso (72 entradas máx)
+        self._rotation_cache_step = 5
 
-        # Compatibilidad: variables de "atrapado" que fueron usadas antes
-        # No se usa lógica de atrapado actualmente, pero estas banderas evitan errores
-        # cuando se presiona Enter (se consultan y se resetean si existieran)
+        # Compatibilidad de estado de atrapado
         self.ball_caught = False
         self.caught_by = None
-
-        # Toggle debounce para evitar reversiones por key-repeat
         self._last_toggle_time = 0
-        self._toggle_cooldown_ms = 200  # 200 ms de protección
+        self._toggle_cooldown_ms = 200
 
-        # Movimiento iniciado con tecla Enter (dirección aleatoria)
+        # --- MODIFICACIONES CLAVE PARA EL MOVIMIENTO 2D ---
         self.ball_moving = False
-        self._move_direction = 1               # +1 derecha, -1 izquierda
-        self._move_speed = 8                   # px por frame (un poco más rápido sin subir FPS)
-        self._move_amplitude = 36              # amplitud vertical de la oscilación
-        self._move_phase = 0.0
-        self._move_phase_speed = 0.24          # incremento de fase por frame
-        self._move_origin_y = self.ball_y
-        self._move_target_right = self.width - 40
-        self._move_target_left = 40
+        self._move_speed_mag = 40 # 
+        self._move_speed_x = 0.0 # Componente X de la velocidad
+        self._move_speed_y = 0.0  # Componente Y de la velocidad
+        
+        # Definición de límites de rebote (usando la mitad del tamaño de la pelota)
+        self.ball_half_w = self.ball_w // 2
+        self.ball_half_h = self.ball_h // 2
+        
+        self._move_target_left = self.ball_half_w# X Mínimo (Centro)
+        self._move_target_right = self.width - self.ball_half_w # X Máximo (Centro)
+        self._move_target_top = self.ball_half_h # Y Mínimo (Centro)
+        self._move_target_bottom = self.height - self.ball_half_h # Y Máximo (Centro)
 
-        # Escala visual: efecto de aproximación durante el desplazamiento
-        self.ball_scale = 1.0                 # 1.0 tamaño normal
-        self._move_scale_start = 0.6          # escala inicial al iniciar desplazamiento
-        self._move_start_x = self.ball_x      # para calcular progreso hacia el objetivo
-
-    # (Limpieza) Sin estado de atrapado: la colisión con cualquier mano resetea al centro
+        # Variables de escala mantenidas por compatibilidad, aunque la lógica de "aproximación"
+        # deja de tener sentido con movimiento de rebote continuo.
+        self.ball_scale = 1.0
+        self._move_scale_start = 0.6
+        self._move_start_x = self.ball_x
+        # -------------------------------------------------------------------
 
     def _compute_fullscreen_scaler(self):
         # Calcula parámetros de escalado/centrado para fullscreen
@@ -180,8 +187,7 @@ class PygameRenderer:
                         self._last_toggle_time = now
                         print(f"[DEBUG] ball_rotating -> {self.ball_rotating}")
                 
-                # Tecla 'Enter' INICIA desplazamiento en dirección aleatoria
-                # (solo si la pelota está rotando y no se está moviendo)
+                # Tecla 'Enter' INICIA desplazamiento en dirección aleatoria 2D
                 if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                     if self.ball_rotating and not self.ball_moving:
                         # si está atrapada, soltar antes de iniciar
@@ -189,49 +195,64 @@ class PygameRenderer:
                             self.ball_caught = False
                             self.caught_by = None
                         self.ball_moving = True
-                        self._move_direction = random.choice([-1, 1])
-                        self._move_origin_y = self.ball_y
-                        self._move_phase = 0.0
-                        # efecto de aproximación: iniciar pequeño
-                        self.ball_scale = self._move_scale_start
+                        
+                        # 1. Elegir un ángulo de movimiento aleatorio (en radianes)
+                        # Usamos 360 grados (2*pi) para movimiento completamente aleatorio en 2D
+                        angle_radians = random.uniform(0, 2 * math.pi)
+                        
+                        # 2. Descomponer la velocidad total (magnitud) en componentes X e Y
+                        self._move_speed_x = self._move_speed_mag * math.cos(angle_radians)
+                        self._move_speed_y = self._move_speed_mag * math.sin(angle_radians)
+                        
+                        # Opcional: Asegurarse de que no sea demasiado lento en un eje (evitar ángulos muy cercanos a 0, 90, 180, 270)
+                        min_speed_component = 0.5 
+                        if abs(self._move_speed_x) < min_speed_component:
+                            self._move_speed_x = min_speed_component if self._move_speed_x >= 0 else -min_speed_component
+                        if abs(self._move_speed_y) < min_speed_component:
+                            self._move_speed_y = min_speed_component if self._move_speed_y >= 0 else -min_speed_component
+
+
+                        # El efecto de escala de aproximación ya no es útil para rebote continuo, pero mantenemos las variables
+                        self.ball_scale = 1.0
                         self._move_start_x = self.ball_x
 
-        # Actualizar movimiento si corresponde (antes de dibujar la pelota)
+        # Actualizar movimiento si corresponde
         if self.ball_moving:
             if not self.ball_rotating:
-                # si la pelota deja de rotar (pasa a estática), detener desplazamiento
+                # Si la pelota deja de rotar, detener desplazamiento
                 self.ball_moving = False
+                self._move_speed_x = 0.0
+                self._move_speed_y = 0.0
             else:
-                self.ball_x += self._move_speed * self._move_direction
-                self._move_phase += self._move_phase_speed
-                # oscilación vertical tipo seno alrededor del origen fijado
-                self.ball_y = int(self._move_origin_y + self._move_amplitude * math.sin(self._move_phase))
-                # actualizar escala en función de la proximidad al objetivo
-                target_x = self._move_target_right if self._move_direction > 0 else self._move_target_left
-                dist_total = abs(target_x - self._move_start_x)
-                if dist_total <= 0:
-                    self.ball_scale = 1.0
-                else:
-                    dist_rest = abs(target_x - self.ball_x)
-                    progress = max(0.0, min(1.0, 1.0 - (dist_rest / dist_total)))
-                    self.ball_scale = self._move_scale_start + (1.0 - self._move_scale_start) * progress
-                # detener al llegar al objetivo según dirección
-                if self._move_direction > 0:
-                    if self.ball_x >= self._move_target_right:
-                        self.ball_x = self._move_target_right
-                        self.ball_moving = False
-                        self.ball_scale = 1.0
-                else:
-                    if self.ball_x <= self._move_target_left:
-                        self.ball_x = self._move_target_left
-                        self.ball_moving = False
-                        self.ball_scale = 1.0
+                # 1. Aplicar movimiento 2D
+                self.ball_x += self._move_speed_x
+                self.ball_y += self._move_speed_y
+
+                # 2. Lógica de Rebote (Horizontal X)
+                center_x = self.ball_x + self.ball_half_w
+                if center_x > self._move_target_right:
+                    self.ball_x = self._move_target_right - self.ball_half_w
+                    self._move_speed_x *= -1 # Invierte dirección X (rebote)
+                elif center_x < self._move_target_left:
+                    self.ball_x = self._move_target_left - self.ball_half_w
+                    self._move_speed_x *= -1 # Invierte dirección X (rebote)
+
+                # 3. Lógica de Rebote (Vertical Y)
+                center_y = self.ball_y + self.ball_half_h
+                if center_y > self._move_target_bottom:
+                    self.ball_y = self._move_target_bottom - self.ball_half_h
+                    self._move_speed_y *= -1 # Invierte dirección Y (rebote)
+                elif center_y < self._move_target_top:
+                    self.ball_y = self._move_target_top - self.ball_half_h
+                    self._move_speed_y *= -1 # Invierte dirección Y (rebote)
+                
+                # Para movimiento de rebote continuo, la escala se mantiene en 1.0
+                self.ball_scale = 1.0
 
         # Dibujar sobre el canvas lógico
         self.canvas.blit(self.background, (0, 0))
 
         # Pelota animada
-        # Solo avanzamos animación y aplicamos rotación si está activada
         if self.ball_rotating:
             self.ball_animation.update()
 
@@ -239,7 +260,7 @@ class PygameRenderer:
         self._ball_surface.fill((0, 0, 0, 0))
         self.ball_animation.draw(self._ball_surface, 0, 0)
 
-        # Centro según tamaño base; el escalado se compensa centrando al dibujar
+        # Centro según tamaño base
         cx = int(self.ball_x + self.ball_w / 2)
         cy = int(self.ball_y + self.ball_h / 2)
 
@@ -288,15 +309,15 @@ class PygameRenderer:
             self._handle_collision("Left", left_rect, ball_rect)
             collided = True
 
-        # Si alguna mano toca la pelota, resetear al centro sin quedar estática (no alteramos rotación)
+        # Si alguna mano toca la pelota, resetear al centro y detener el movimiento
         if collided:
             self.ball_moving = False
             self.ball_scale = 1.0
-            self._move_phase = 0.0
+            self._move_speed_x = 0.0
+            self._move_speed_y = 0.0
             # volver al centro inicial
             self.ball_x = (self.width - self.ball_w) // 2
             self.ball_y = (self.height - self.ball_h) // 2
-            # (Limpieza) Sin estado de atrapado adicional
 
         # Mostrar hitboxes si corresponde
         if self.show_hitboxes:
