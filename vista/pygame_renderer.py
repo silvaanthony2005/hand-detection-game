@@ -71,7 +71,7 @@ class PygameRenderer:
         
         self.ball_w, self.ball_h = 132, 125
         self.ball_x = (self.width - self.ball_w) // 2
-        self.ball_y = (self.height - self.ball_h) // 2
+        self.ball_y = self.height - self.ball_h - 210  # Posición del portero
         self._ball_surface = pygame.Surface((self.ball_w, self.ball_h), pygame.SRCALPHA)
 
         # hitboxes
@@ -115,8 +115,8 @@ class PygameRenderer:
         self.misses = 0
         self.max_misses = 3
         
-        # Escalado progresivo - INICIA PEQUEÑA (0.3)
-        self.ball_scale = 0.3  # CAMBIADO: ahora inicia pequeña
+        # Escalado progresivo - INICIA PEQUEÑA (0.2)
+        self.ball_scale = 0.2  # CAMBIADO: ahora inicia pequeña
         self._move_start_x = self.ball_x + self.ball_w/2
         self._move_start_y = self.ball_y + self.ball_h/2
         
@@ -240,9 +240,9 @@ class PygameRenderer:
         if self.ball_launching or self.ball_caught:
             return
         
-        # Posición inicial (centro)
+        # Posición inicial
         self.ball_x = (self.width - self.ball_w) // 2
-        self.ball_y = (self.height - self.ball_h) // 2
+        self.ball_y = self.height - self.ball_h - 210 # Posición del que patea
         start_x = self.ball_x + self.ball_w/2
         start_y = self.ball_y + self.ball_h/2
         
@@ -259,7 +259,7 @@ class PygameRenderer:
         self.ball_launching = True
         self.ball_moving = True
         self.ball_rotating = True
-        self.ball_scale = 0.3  # Comienza pequeña (igual que al inicio)
+        self.ball_scale = 0.2  # Comienza pequeña (igual que al inicio)
         self.ball_launch_start_time = pygame.time.get_ticks()
         
         print(f"¡Pelota lanzada hacia ({self.ball_target_x}, {self.ball_target_y})!")
@@ -267,12 +267,12 @@ class PygameRenderer:
             print(f"Trayectoria curva: fuerza {self.curve_strength:.2f}")
 
     def _reset_ball_position(self):
-        """Resetea la pelota a la posición inicial PEQUEÑA"""
+        """Resetea la pelota a la posición inicial DEL PORTERO"""
         self.ball_launching = False
         self.ball_moving = False
         self.ball_x = (self.width - self.ball_w) // 2
-        self.ball_y = (self.height - self.ball_h) // 2
-        self.ball_scale = 0.3  # CAMBIADO: vuelve a ser pequeña después de reset
+        self.ball_y = self.height - self.ball_h - 210
+        self.ball_scale = 0.2
         self.ball_caught = False
         self.caught_by = None
         self.curve_strength = 0.0
@@ -363,7 +363,7 @@ class PygameRenderer:
                 self.ball_y = new_y - self.ball_h/2
                 
                 # Escalar la pelota basado en el progreso
-                start_scale = 0.3
+                start_scale = 0.2
                 target_scale = 1.0
                 self.ball_scale = start_scale + (target_scale - start_scale) * progress
                 
@@ -373,7 +373,7 @@ class PygameRenderer:
                     self.ball_moving = False
                     self.misses += 1
                     print(f"¡Fallaste! Llevas {self.misses}/{self.max_misses} fallos")
-                    self._reset_ball_position()  # Esto la reseteará a escala 0.3
+                    self._reset_ball_position()  # Esto la reseteará a escala 0.2
                     
                     # Verificar si se perdió el juego
                     if self.misses >= self.max_misses:
@@ -435,14 +435,14 @@ class PygameRenderer:
             collided = True
             self.score += 1
             print(f"¡Atrapado con mano derecha! Puntuación: {self.score}")
-            self._reset_ball_position()  # Esto la reseteará a escala 0.3
+            self._reset_ball_position()  # Esto la reseteará a escala 0.2
             
         elif left_rect is not None and self._check_ball_catch(left_rect, ball_rect):
             self._handle_collision("Left", left_rect, ball_rect)
             collided = True
             self.score += 1
             print(f"¡Atrapado con mano izquierda! Puntuación: {self.score}")
-            self._reset_ball_position()  # Esto la reseteará a escala 0.3
+            self._reset_ball_position()  # Esto la reseteará a escala 0.2
 
         # Mostrar hitboxes si corresponde (sin cambio)
         if self.show_hitboxes:
