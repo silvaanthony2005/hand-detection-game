@@ -25,7 +25,6 @@ class PygameRenderer:
         self.clock = pygame.time.Clock()
 
         # Rutas de recursos (asumiendo que la estructura de directorios funciona)
-        # Nota: La clase BallAnimation se asume importada y funcional.
         images_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "Images"))
 
         # --- Carga de recursos (omitiendo la carga real si faltan archivos) ---
@@ -40,6 +39,17 @@ class PygameRenderer:
         except pygame.error:
             print(f"Warning: Background image not found at {bg_path}")
         
+        # Crear y cachear una versión desenfocada del fondo (downscale + upscale)
+        try:
+            blur_scale = 0.06  # ajusta entre 0.02 (más blur) y 0.15 (menos blur)
+            sw = max(1, int(self.width * blur_scale))
+            sh = max(1, int(self.height * blur_scale))
+            small = pygame.transform.smoothscale(self.background, (sw, sh))
+            self.background_blur = pygame.transform.smoothscale(small, (self.width, self.height))
+        except Exception:
+            # si algo falla, usar copia normal
+            self.background_blur = self.background.copy()
+
         # Manos (usamos un rectángulo gris como fallback si faltan las imágenes)
         self.hand_w, self.hand_h = 120, 120
         hand_fallback = pygame.Surface((self.hand_w, self.hand_h), pygame.SRCALPHA)
@@ -114,6 +124,17 @@ class PygameRenderer:
         self.score = 0
         self.misses = 0
         self.max_misses = 3
+
+        # --- Configuración visual del marcador ---
+        # Posición del número de goles (coordenada midleft en el canvas lógico)
+        self.score_pos = (22.5 , 55)
+        # Origen (x,y) para la primera X de derrotas; las siguientes se apilan verticalmente hacia abajo
+        self.misses_icons_origin = (72, 32)
+        # Tamaño y separación de cada icono X (en píxeles)
+        self.miss_icon_size = 10
+        self.miss_icon_spacing = 8
+        # Color de las X
+        self.miss_icon_color = (230, 40, 40)
         
         # Escalado progresivo - INICIA PEQUEÑA (0.2)
         self.ball_scale = 0.2  # CAMBIADO: ahora inicia pequeña
@@ -128,6 +149,50 @@ class PygameRenderer:
         self._move_target_right = self.width - self.ball_half_w
         self._move_target_top = self.ball_half_h
         self._move_target_bottom = self.height - self.ball_half_h
+
+        # --- Game over: cargar imagen y fuentes ---
+        self.game_over = False
+        self.game_over_image = None
+        self.game_over_instr_font = pygame.font.Font(None, 20)
+        self.game_over_font = pygame.font.Font(None, 72)
+        try:
+            go_path = os.path.join(images_dir, "game_over.png")  # coloca la imagen que enviaste como Images/game_over.png
+            img = pygame.image.load(go_path).convert_alpha()
+            # Escalar para que encaje en la ventana manteniendo aspecto (95% del área disponible)
+            iw, ih = img.get_size()
+            if iw == 0 or ih == 0:
+                raise Exception("invalid image size")
+            fit_scale = min(self.width / iw, self.height / ih) * 0.95
+            new_w = max(1, int(iw * fit_scale))
+            new_h = max(1, int(ih * fit_scale))
+            self.game_over_image = pygame.transform.smoothscale(img, (new_w, new_h))
+            # guardar rect centrado para usar en render()
+            self.game_over_image_rect = self.game_over_image.get_rect(center=(self.width // 2, self.height // 2))
+        except Exception:
+             # si no existe la imagen, se usará texto grande
+            self.game_over_image = None
+            self.game_over_image_rect = None
+
+        # --- Menu inicial ---
+        self.show_menu = True
+        self.menu_image = None
+        self.menu_image_rect = None
+        self.menu_instr_font = pygame.font.Font(None, 28)
+        try:
+            menu_path = os.path.join(images_dir, "menu.png")  # pon la imagen del menú aquí: Images/menu.png
+            mimg = pygame.image.load(menu_path).convert_alpha()
+            mw, mh = mimg.get_size()
+            if mw == 0 or mh == 0:
+                raise Exception("invalid menu image")
+            menu_scale = min(self.width / mw, self.height / mh) * 0.95
+            mw2 = max(1, int(mw * menu_scale))
+            mh2 = max(1, int(mh * menu_scale))
+            self.menu_image = pygame.transform.smoothscale(mimg, (mw2, mh2))
+            self.menu_image_rect = self.menu_image.get_rect(center=(self.width // 2, self.height // 2))
+        except Exception:
+            # si no existe la imagen, se usará texto simple como menú
+            self.menu_image = None
+            self.menu_image_rect = None
 
     def _compute_fullscreen_scaler(self):
         # sin cambio
@@ -237,7 +302,7 @@ class PygameRenderer:
 
     def _launch_ball_to_random_target(self):
         """Lanza la pelota a una posición aleatoria con tiempo constante"""
-        if self.ball_launching or self.ball_caught:
+        if self.ball_launching or self.ball_caught or self.game_over:
             return
         
         # Posición inicial
@@ -313,6 +378,21 @@ class PygameRenderer:
             if event.type == pygame.QUIT:
                 return False
             if event.type == pygame.KEYDOWN:
+                # cuando estamos en menú, ENTER inicia juego y ESC sale
+                if self.show_menu:
+                    if event.key == pygame.K_ESCAPE:
+                        return False
+                    if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                        # comenzar juego
+                        self.show_menu = False
+                        self.score = 0
+                        self.misses = 0
+                        self.game_over = False
+                        self._reset_ball_position()
+                        print("Juego iniciado (ENTER desde menú).")
+                    # ignorar el resto de teclas mientras esté el menú
+                    continue
+                
                 if event.key == pygame.K_ESCAPE:
                     return False
                 if event.key == pygame.K_f:
@@ -329,8 +409,51 @@ class PygameRenderer:
                 
                 # Tecla 'Enter' LANZA la pelota a objetivo aleatorio (MODIFICADO)
                 if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
-                    if not self.ball_launching and not self.ball_moving:
-                        self._launch_ball_to_random_target()
+                    # si estamos en game over -> reiniciar; si no, lanzar
+                    if self.game_over:
+                        # reiniciar todo el estado del juego
+                        self.score = 0
+                        self.misses = 0
+                        self.game_over = False
+                        self._reset_ball_position()
+                        print("Juego reiniciado (Enter).")
+                    else:
+                        if not self.ball_launching and not self.ball_moving:
+                            self._launch_ball_to_random_target()
+
+        # Si estamos en el menú, dibujar y devolver sin ejecutar la lógica del juego
+        if self.show_menu:
+            # dibujar fondo y menú centrado
+            # usar la versión desenfocada si está disponible
+            if getattr(self, "background_blur", None) is not None:
+                self.canvas.blit(self.background_blur, (0, 0))
+            else:
+                self.canvas.blit(self.background, (0, 0))
+            if self.menu_image is not None:
+                self.canvas.blit(self.menu_image, self.menu_image_rect.topleft)
+                instr = self.menu_instr_font.render("Pulsa ENTER para jugar  •  ESC para salir", True, (240, 240, 240))
+                instr_rect = instr.get_rect(center=(self.width // 2, self.menu_image_rect.bottom + 24))
+                self.canvas.blit(instr, instr_rect.topleft)
+            else:
+                # fallback textual
+                title_font = pygame.font.Font(None, 96)
+                title = title_font.render("FUTBOL CAMARA", True, (255, 255, 255))
+                t_rect = title.get_rect(center=(self.width // 2, self.height // 2 - 40))
+                self.canvas.blit(title, t_rect.topleft)
+                instr = self.menu_instr_font.render("Pulsa ENTER para jugar  •  ESC para salir", True, (240, 240, 240))
+                instr_rect = instr.get_rect(center=(self.width // 2, self.height // 2 + 40))
+                self.canvas.blit(instr, instr_rect.topleft)
+
+            # Presentación y retorno temprano
+            if self.is_fullscreen:
+                scaled = pygame.transform.smoothscale(self.canvas, self.scaled_size)
+                self.screen.fill((0, 0, 0))
+                self.screen.blit(scaled, (self.offset_x, self.offset_y))
+            else:
+                self.screen.blit(self.canvas, (0, 0))
+            pygame.display.flip()
+            self.clock.tick(60)
+            return True
 
         # Actualizar movimiento con tiempo constante y trayectoria curva (COMPLETAMENTE MODIFICADO)
         if self.ball_moving and self.ball_launching:
@@ -375,10 +498,10 @@ class PygameRenderer:
                     print(f"¡Fallaste! Llevas {self.misses}/{self.max_misses} fallos")
                     self._reset_ball_position()  # Esto la reseteará a escala 0.2
                     
-                    # Verificar si se perdió el juego
+                    # Verificar si se perdió el juego -> activar game over
                     if self.misses >= self.max_misses:
+                        self.game_over = True
                         print("¡Juego terminado! Has perdido.")
-                        # Aquí podrías agregar lógica para reiniciar el juego o mostrar game over
 
         # Dibujar sobre el canvas lógico (sin cambio)
         self.canvas.blit(self.background, (0, 0))
@@ -430,19 +553,20 @@ class PygameRenderer:
 
         # Colisiones - SOLO cuando la pelota está en escala completa (MODIFICADO)
         collided = False
-        if right_rect is not None and self._check_ball_catch(right_rect, ball_rect):
-            self._handle_collision("Right", right_rect, ball_rect)
-            collided = True
-            self.score += 1
-            print(f"¡Atrapado con mano derecha! Puntuación: {self.score}")
-            self._reset_ball_position()  # Esto la reseteará a escala 0.2
-            
-        elif left_rect is not None and self._check_ball_catch(left_rect, ball_rect):
-            self._handle_collision("Left", left_rect, ball_rect)
-            collided = True
-            self.score += 1
-            print(f"¡Atrapado con mano izquierda! Puntuación: {self.score}")
-            self._reset_ball_position()  # Esto la reseteará a escala 0.2
+        if not self.game_over:
+            if right_rect is not None and self._check_ball_catch(right_rect, ball_rect):
+                self._handle_collision("Right", right_rect, ball_rect)
+                collided = True
+                self.score += 1
+                print(f"¡Atrapado con mano derecha! Puntuación: {self.score}")
+                self._reset_ball_position()  # Esto la reseteará a escala 0.2
+                
+            elif left_rect is not None and self._check_ball_catch(left_rect, ball_rect):
+                self._handle_collision("Left", left_rect, ball_rect)
+                collided = True
+                self.score += 1
+                print(f"¡Atrapado con mano izquierda! Puntuación: {self.score}")
+                self._reset_ball_position()  # Esto la reseteará a escala 0.2
 
         # Mostrar hitboxes si corresponde (sin cambio)
         if self.show_hitboxes:
@@ -455,12 +579,27 @@ class PygameRenderer:
                 pygame.draw.rect(self.canvas, box_color, left_rect, 2)
             pygame.draw.rect(self.canvas, box_color, ball_rect, 2)
 
-        # Mostrar información de puntuación (NUEVO)
+        # Mostrar información de puntuación
         font = pygame.font.Font(None, 36)
-        score_text = font.render(f"Puntuación: {self.score}", True, (255, 255, 255))
-        misses_text = font.render(f"Fallos: {self.misses}/{self.max_misses}", True, (255, 255, 255))
-        self.canvas.blit(score_text, (10, 10))
-        self.canvas.blit(misses_text, (10, 50))
+        # dibujar goles (número)
+        score_text = font.render(str(self.score), True, (255, 255, 255))
+        score_rect = score_text.get_rect(midleft=self.score_pos)
+        self.canvas.blit(score_text, score_rect.topleft)
+
+        # dibujar derrotas como X rojas verticales a la derecha del marcador
+        icon_x, icon_y = self.misses_icons_origin
+        size = self.miss_icon_size
+        gap = self.miss_icon_spacing
+        for i in range(self.max_misses):
+            y = icon_y + i * (size + gap)
+            rect = pygame.Rect(icon_x, y, size, size)
+            # sólo dibujar X si ese índice corresponde a un fallo ya ocurrido
+            if i < self.misses:
+                c = self.miss_icon_color
+                # dibujar X con 3px de grosor
+                pygame.draw.line(self.canvas, c, rect.topleft, rect.bottomright, 3)
+                pygame.draw.line(self.canvas, c, (rect.left, rect.bottom), (rect.right, rect.top), 3)
+            # si no hay fallo todavía, no dibujamos nada (espacio oculto)
 
         # Mostrar indicador de trayectoria (DEBUG - opcional)
         if self.ball_launching and self.show_hitboxes:
@@ -490,6 +629,42 @@ class PygameRenderer:
             self.screen.blit(scaled, (self.offset_x, self.offset_y))
         else:
             self.screen.blit(self.canvas, (0, 0))
+
+        # Si estamos en estado de game over, dibujar overlay con la imagen y pedir ENTER para reiniciar
+        if self.game_over:
+            # Semitransparencia sobre el canvas
+            overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 160))
+            self.canvas.blit(overlay, (0, 0))
+
+            if self.game_over_image is not None:
+                iw, ih = self.game_over_image.get_size()
+                go_x = (self.width - iw) // 2
+                go_y = (self.height - ih) // 2
+                self.canvas.blit(self.game_over_image, (go_x, go_y))
+                instr = self.game_over_instr_font.render("Pulsa ENTER para reiniciar", True, (240, 240, 240))
+                instr_rect = instr.get_rect(center=(self.width//2, go_y + ih + 24))
+                self.canvas.blit(instr, instr_rect.topleft)
+            else:
+                # Texto grande centrado como fallback
+                go_text = self.game_over_font.render("GAME OVER", True, (255, 40, 40))
+                g_rect = go_text.get_rect(center=(self.width // 2, self.height // 2 - 20))
+                self.canvas.blit(go_text, g_rect.topleft)
+                instr = self.game_over_instr_font.render("Pulsa ENTER para reiniciar", True, (240, 240, 240))
+                instr_rect = instr.get_rect(center=(self.width // 2, self.height // 2 + 40))
+                self.canvas.blit(instr, instr_rect.topleft)
+
+            # Re-blit final (para fullscreen se escala la canvas ya actualizada)
+            if self.is_fullscreen:
+                scaled = pygame.transform.smoothscale(self.canvas, self.scaled_size)
+                self.screen.fill((0, 0, 0))
+                self.screen.blit(scaled, (self.offset_x, self.offset_y))
+            else:
+                self.screen.blit(self.canvas, (0, 0))
+
+            pygame.display.flip()
+            self.clock.tick(30)
+            return True
 
         pygame.display.flip()
         # Limitar FPS (sin cambio)
