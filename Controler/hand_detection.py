@@ -23,6 +23,9 @@ tracker = OptimizedHandTracker(
 
 print("Modo simple: Una mano controla ambos guantes")
 
+# Variable para recordar la última posición de la mano y evitar que los guantes desaparezcan
+last_known_hand_pos = None
+
 try:
     while cap.isOpened():
         ret, frame = cap.read()
@@ -32,15 +35,21 @@ try:
         frame = cv2.flip(frame, 1)
         right_pos, left_pos = tracker.process_frame(frame)
 
-        # SIEMPRE mostrar ambos guantes juntos
+        # Determinar la posición de la mano detectada
+        current_hand_pos = None
         if right_pos or left_pos:
-            # Usar la mano detectada (cualquiera que sea)
-            hand_pos = right_pos if right_pos else left_pos
-            x, y = hand_pos
-            
-            # Ambos guantes separados por 120 píxeles
-            right_pos = (min(camera_width, x + 60), y)
-            left_pos = (max(0, x - 60), y)
+            # Priorizar la mano izquierda para un control más consistente
+            current_hand_pos = left_pos if left_pos else right_pos
+            last_known_hand_pos = current_hand_pos  # Actualizar la última posición conocida
+
+        # Usar la última posición conocida si no se detecta ninguna mano en este frame
+        final_hand_pos = current_hand_pos if current_hand_pos else last_known_hand_pos
+
+        if final_hand_pos:
+            x, y = final_hand_pos
+            # Calcular la posición de ambos guantes a partir de la posición de la mano
+            right_pos = (min(camera_width - renderer.hand_w // 2, x + 60), y)
+            left_pos = (max(renderer.hand_w // 2, x - 60), y)
 
         if not renderer.render(right_pos, left_pos):
             break

@@ -110,8 +110,11 @@ class PygameRenderer:
         self.ball_target_x = 0
         self.ball_target_y = 0
         
-        # Tiempo constante de viaje (2 segundos)
-        self.ball_travel_time = 2000  # ms
+        # --- SISTEMA DE DIFICULTAD ---
+        self.initial_travel_time = 2000  # ms (velocidad inicial)
+        self.travel_time_reduction = 250 # ms que se restan por cada nivel
+        self.difficulty_step = 5         # goles para subir de nivel
+        self.ball_travel_time = self.initial_travel_time  # tiempo de viaje actual
         self.ball_launch_start_time = 0
         
         # Control de trayectoria curva
@@ -388,6 +391,7 @@ class PygameRenderer:
                         self.score = 0
                         self.misses = 0
                         self.game_over = False
+                        self.ball_travel_time = self.initial_travel_time # Reiniciar dificultad
                         self._reset_ball_position()
                         print("Juego iniciado (ENTER desde menú).")
                     # ignorar el resto de teclas mientras esté el menú
@@ -415,6 +419,7 @@ class PygameRenderer:
                         self.score = 0
                         self.misses = 0
                         self.game_over = False
+                        self.ball_travel_time = self.initial_travel_time # Reiniciar dificultad
                         self._reset_ball_position()
                         print("Juego reiniciado (Enter).")
                     else:
@@ -558,6 +563,10 @@ class PygameRenderer:
                 self._handle_collision("Right", right_rect, ball_rect)
                 collided = True
                 self.score += 1
+                # --- LÓGICA DE DIFICULTAD ---
+                if self.score > 0 and self.score % self.difficulty_step == 0:
+                    self.ball_travel_time = max(500, self.ball_travel_time - self.travel_time_reduction) # 500ms es el límite de velocidad
+                    print(f"¡NIVEL DE DIFICULTAD AUMENTADO! Nueva velocidad: {self.ball_travel_time}ms")
                 print(f"¡Atrapado con mano derecha! Puntuación: {self.score}")
                 self._reset_ball_position()  # Esto la reseteará a escala 0.2
                 
@@ -565,6 +574,10 @@ class PygameRenderer:
                 self._handle_collision("Left", left_rect, ball_rect)
                 collided = True
                 self.score += 1
+                # --- LÓGICA DE DIFICULTAD ---
+                if self.score > 0 and self.score % self.difficulty_step == 0:
+                    self.ball_travel_time = max(500, self.ball_travel_time - self.travel_time_reduction) # 500ms es el límite de velocidad
+                    print(f"¡NIVEL DE DIFICULTAD AUMENTADO! Nueva velocidad: {self.ball_travel_time}ms")
                 print(f"¡Atrapado con mano izquierda! Puntuación: {self.score}")
                 self._reset_ball_position()  # Esto la reseteará a escala 0.2
 
