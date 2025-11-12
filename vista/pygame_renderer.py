@@ -7,7 +7,11 @@ from vista.ball_animation import BallAnimation
 
 
 class PygameRenderer:
-    def __init__(self, camera_width: int = 640, camera_height: int = 480, title: str = "Hand Detection Game"):
+    def __init__(self, camera_width: int = 640, camera_height: int = 480, title: str = "Hand Detection Game",
+                 enable_prep_screen: bool = True,
+                 enable_auto_launch: bool = True,
+                 auto_launch_delay_ms: int = 700,
+                 countdown_seconds: int = 3):
         pygame.init()
         self.width = camera_width
         self.height = camera_height
@@ -200,12 +204,16 @@ class PygameRenderer:
         self.waiting_start = False
         self.countdown_active = False
         self.countdown_start_time = 0
-        self.countdown_seconds = 3
+        # configurable
+        self.countdown_seconds = countdown_seconds
         self.start_prompt_font = pygame.font.Font(None, 40)
 
         # Auto-launch tras el primer inicio: cuando True se lanza automáticamente después de cada reset
+        # flags configurables (no rompen compatibilidad: valores por defecto mantienen comportamiento nuevo)
+        self.enable_prep_screen = enable_prep_screen
+        self.enable_auto_launch = enable_auto_launch
         self.auto_launch_enabled = False
-        self.auto_launch_delay_ms = 700
+        self.auto_launch_delay_ms = auto_launch_delay_ms
         self._last_reset_time = pygame.time.get_ticks()
 
     def _compute_fullscreen_scaler(self):
@@ -394,21 +402,34 @@ class PygameRenderer:
             if event.type == pygame.QUIT:
                 return False
             if event.type == pygame.KEYDOWN:
-                # cuando estamos en menú, ENTER pasa a pantalla de preparación; ESC sale
+                # cuando estamos en menú, ENTER pasa a pantalla de preparación (configurable); ESC sale
                 if self.show_menu:
                     if event.key == pygame.K_ESCAPE:
                         return False
                     if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
-                        # pasar a pantalla "Pulsa ENTER para iniciar" (preparación)
+                        # comportamiento configurable: si está activada la pantalla de preparación,
+                        # entrar en waiting_start para que el jugador coloque las manos; si no,
+                        # iniciar el juego inmediatamente (y opcionalmente auto-lanzar si está configurado).
                         self.show_menu = False
-                        self.waiting_start = True
                         # reiniciar estado base
                         self.score = 0
                         self.misses = 0
                         self.game_over = False
                         self._reset_ball_position()
-                        self.auto_launch_enabled = False
-                        print("Ir a pantalla 'Pulsa ENTER para iniciar'.")
+                        if self.enable_prep_screen:
+                            self.waiting_start = True
+                            # mientras esperamos, no auto-launch
+                            self.auto_launch_enabled = False
+                            print("Ir a pantalla 'Pulsa ENTER para iniciar'.")
+                        else:
+                            # iniciar juego inmediatamente
+                            self.waiting_start = False
+                            # activar auto-launch sólo si la opción está habilitada
+                            self.auto_launch_enabled = bool(self.enable_auto_launch)
+                            print("Juego iniciado (inicio inmediato, sin pantalla de preparación).")
+                            # si se desea auto-lanzar al empezar y está habilitado, lanzar ahora
+                            if self.auto_launch_enabled and not self.ball_launching and not self.ball_moving:
+                                self._launch_ball_to_random_target()
                     # ignorar el resto de teclas mientras esté el menú
                     continue
                 
@@ -550,9 +571,10 @@ class PygameRenderer:
             if elapsed >= (self.countdown_seconds * 1000):
                 self.countdown_active = False
                 self.waiting_start = False
-                self.auto_launch_enabled = True
-                # lanzar la primera pelota automáticamente
-                if not self.ball_launching and not self.ball_moving:
+                # activar auto-launch sólo si la opción está habilitada
+                self.auto_launch_enabled = bool(self.enable_auto_launch)
+                # lanzar la primera pelota automáticamente (si se habilitó auto-launch)
+                if self.auto_launch_enabled and not self.ball_launching and not self.ball_moving:
                     self._launch_ball_to_random_target()
                 # registrar tiempo del reset para controlar auto-launch posterior
                 self._last_reset_time = pygame.time.get_ticks()
