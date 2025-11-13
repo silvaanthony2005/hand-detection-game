@@ -7,7 +7,11 @@ from vista.ball_animation import BallAnimation
 
 
 class PygameRenderer:
-    def __init__(self, camera_width: int = 640, camera_height: int = 480, title: str = "Hand Detection Game"):
+    def __init__(self, camera_width: int = 640, camera_height: int = 480, title: str = "Hand Detection Game",
+                 enable_prep_screen: bool = True,
+                 enable_auto_launch: bool = True,
+                 auto_launch_delay_ms: int = 700,
+                 countdown_seconds: int = 3):
         pygame.init()
         self.width = camera_width
         self.height = camera_height
@@ -194,6 +198,24 @@ class PygameRenderer:
             self.menu_image = None
             self.menu_image_rect = None
 
+        # --- Pantalla de preparación / countdown ---
+        # Tras salir del menú el jugador puede colocar manos (waiting_start).
+        # Pulsar ENTER en waiting_start inicia la cuenta regresiva 3..2..1 y luego lanza automáticamente.
+        self.waiting_start = False
+        self.countdown_active = False
+        self.countdown_start_time = 0
+        # configurable
+        self.countdown_seconds = countdown_seconds
+        self.start_prompt_font = pygame.font.Font(None, 40)
+
+        # Auto-launch tras el primer inicio: cuando True se lanza automáticamente después de cada reset
+        # flags configurables (no rompen compatibilidad: valores por defecto mantienen comportamiento nuevo)
+        self.enable_prep_screen = enable_prep_screen
+        self.enable_auto_launch = enable_auto_launch
+        self.auto_launch_enabled = False
+        self.auto_launch_delay_ms = auto_launch_delay_ms
+        self._last_reset_time = pygame.time.get_ticks()
+
     def _compute_fullscreen_scaler(self):
         # sin cambio
         display_surf = pygame.display.get_surface()
@@ -341,6 +363,8 @@ class PygameRenderer:
         self.ball_caught = False
         self.caught_by = None
         self.curve_strength = 0.0
+        # marcar tiempo del reset para posible auto-launch
+        self._last_reset_time = pygame.time.get_ticks()
 
     def _check_ball_catch(self, hand_rect, ball_rect):
         """Verifica si se atrapó la pelota (solo cuando tiene escala 1.0)"""
@@ -378,19 +402,54 @@ class PygameRenderer:
             if event.type == pygame.QUIT:
                 return False
             if event.type == pygame.KEYDOWN:
-                # cuando estamos en menú, ENTER inicia juego y ESC sale
+                # cuando estamos en menú, ENTER pasa a pantalla de preparación (configurable); ESC sale
                 if self.show_menu:
                     if event.key == pygame.K_ESCAPE:
                         return False
                     if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
-                        # comenzar juego
+                        # comportamiento configurable: si está activada la pantalla de preparación,
+                        # entrar en waiting_start para que el jugador coloque las manos; si no,
+                        # iniciar el juego inmediatamente (y opcionalmente auto-lanzar si está configurado).
                         self.show_menu = False
+                        # reiniciar estado base
                         self.score = 0
                         self.misses = 0
                         self.game_over = False
                         self._reset_ball_position()
-                        print("Juego iniciado (ENTER desde menú).")
+                        if self.enable_prep_screen:
+                            self.waiting_start = True
+                            # mientras esperamos, no auto-launch
+                            self.auto_launch_enabled = False
+                            print("Ir a pantalla 'Pulsa ENTER para iniciar'.")
+                        else:
+                            # iniciar juego inmediatamente
+                            self.waiting_start = False
+                            # activar auto-launch sólo si la opción está habilitada
+                            self.auto_launch_enabled = bool(self.enable_auto_launch)
+                            print("Juego iniciado (inicio inmediato, sin pantalla de preparación).")
+                            # si se desea auto-lanzar al empezar y está habilitado, lanzar ahora
+                            if self.auto_launch_enabled and not self.ball_launching and not self.ball_moving:
+                                self._launch_ball_to_random_target()
                     # ignorar el resto de teclas mientras esté el menú
+                    continue
+                
+                # Si estamos en la pantalla de preparación ("Pulsa ENTER para iniciar")
+                if self.waiting_start and not self.countdown_active:
+                    if event.key == pygame.K_ESCAPE:
+                        return False
+                    if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                        # iniciar la cuenta regresiva
+                        self.countdown_active = True
+                        self.countdown_start_time = pygame.time.get_ticks()
+                        print("Cuenta regresiva iniciada.")
+                    # ignorar otras teclas en este estado
+                    continue
+
+                # Si la cuenta regresiva está activa, sólo ESC puede salir
+                if self.countdown_active:
+                    if event.key == pygame.K_ESCAPE:
+                        return False
+                    # ignorar otras teclas durante countdown
                     continue
                 
                 if event.key == pygame.K_ESCAPE:
@@ -452,6 +511,73 @@ class PygameRenderer:
             else:
                 self.screen.blit(self.canvas, (0, 0))
             pygame.display.flip()
+            self.clock.tick(60)
+            return True
+
+        # Pantalla de preparación (esperando que el jugador coloque las manos)
+        if self.waiting_start and not self.countdown_active:
+            if getattr(self, "background_blur", None) is not None:
+                self.canvas.blit(self.background_blur, (0, 0))
+            else:
+                self.canvas.blit(self.background, (0, 0))
+            prompt = self.start_prompt_font.render("Pulsa ENTER para iniciar", True, (255, 255, 255))
+            p_rect = prompt.get_rect(center=(self.width // 2, self.height // 2))
+            box = pygame.Surface((p_rect.width + 20, p_rect.height + 12), pygame.SRCALPHA)
+            box.fill((0, 0, 0, 140))
+            box_rect = box.get_rect(center=p_rect.center)
+            self.canvas.blit(box, box_rect.topleft)
+            self.canvas.blit(prompt, p_rect.topleft)
+            instr = self.menu_instr_font.render("Ajusta tus manos frente a la cámara y pulsa ENTER", True, (220, 220, 220))
+            instr_rect = instr.get_rect(center=(self.width // 2, p_rect.bottom + 24))
+            self.canvas.blit(instr, instr_rect.topleft)
+
+            if self.is_fullscreen:
+                scaled = pygame.transform.smoothscale(self.canvas, self.scaled_size)
+                self.screen.fill((0, 0, 0))
+                self.screen.blit(scaled, (self.offset_x, self.offset_y))
+            else:
+                self.screen.blit(self.canvas, (0, 0))
+            pygame.display.flip()
+            self.clock.tick(60)
+            return True
+
+        # Pantalla de countdown (3..2..1)
+        now = pygame.time.get_ticks()
+        if self.countdown_active:
+            # Dibujar fondo desenfocado
+            if getattr(self, "background_blur", None) is not None:
+                self.canvas.blit(self.background_blur, (0, 0))
+            else:
+                self.canvas.blit(self.background, (0, 0))
+            elapsed = now - self.countdown_start_time
+            idx = int(elapsed // 1000)
+            remaining = self.countdown_seconds - idx
+            if remaining > 0:
+                txt = str(remaining)
+            else:
+                txt = "GO!"
+            big_font = pygame.font.Font(None, 140)
+            txt_surf = big_font.render(txt, True, (255, 220, 0))
+            txt_rect = txt_surf.get_rect(center=(self.width // 2, self.height // 2))
+            # fondo oscuro para el número
+            box = pygame.Surface((txt_rect.width + 40, txt_rect.height + 24), pygame.SRCALPHA)
+            box.fill((0, 0, 0, 160))
+            box_rect = box.get_rect(center=txt_rect.center)
+            self.canvas.blit(box, box_rect.topleft)
+            self.canvas.blit(txt_surf, txt_rect.topleft)
+            pygame.display.flip()
+
+            # terminar countdown
+            if elapsed >= (self.countdown_seconds * 1000):
+                self.countdown_active = False
+                self.waiting_start = False
+                # activar auto-launch sólo si la opción está habilitada
+                self.auto_launch_enabled = bool(self.enable_auto_launch)
+                # lanzar la primera pelota automáticamente (si se habilitó auto-launch)
+                if self.auto_launch_enabled and not self.ball_launching and not self.ball_moving:
+                    self._launch_ball_to_random_target()
+                # registrar tiempo del reset para controlar auto-launch posterior
+                self._last_reset_time = pygame.time.get_ticks()
             self.clock.tick(60)
             return True
 
@@ -665,6 +791,12 @@ class PygameRenderer:
             pygame.display.flip()
             self.clock.tick(30)
             return True
+
+        # Auto-launch después de que la pelota se haya reseteado (si está habilitado)
+        now = pygame.time.get_ticks()
+        if self.auto_launch_enabled and not self.ball_launching and not self.ball_moving and not self.game_over:
+            if now - self._last_reset_time >= self.auto_launch_delay_ms:
+                self._launch_ball_to_random_target()
 
         pygame.display.flip()
         # Limitar FPS (sin cambio)
