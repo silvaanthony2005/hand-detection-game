@@ -25,6 +25,15 @@ class PygameRenderer:
         except pygame.error as e:
             print(f"Warning: No se pudo cargar el archivo de música en {music_path}: {e}")
 
+        # Carga del sonido de game over
+        try:
+            game_over_sound_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "audio", "gameover.ogg"))
+            self.game_over_sound = pygame.mixer.Sound(game_over_sound_path)
+            self.game_over_sound.set_volume(1.0)
+        except pygame.error as e:
+            print(f"Warning: No se pudo cargar el sonido de game over en {game_over_sound_path}: {e}")
+            self.game_over_sound = None
+
         # Ventana inicial en modo ventana
         self.is_fullscreen = False
         try:
@@ -651,6 +660,8 @@ class PygameRenderer:
                     if self.misses >= self.max_misses:
                         self.game_over = True
                         pygame.mixer.music.stop()
+                        if self.game_over_sound:
+                            self.game_over_sound.play()
                         print("¡Juego terminado! Has perdido.")
 
         # Dibujar sobre el canvas lógico (sin cambio)
