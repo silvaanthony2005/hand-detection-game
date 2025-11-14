@@ -34,6 +34,15 @@ class PygameRenderer:
             print(f"Warning: No se pudo cargar el sonido de game over en {game_over_sound_path}: {e}")
             self.game_over_sound = None
 
+        # Carga del sonido de level up
+        try:
+            level_up_sound_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "audio", "levelup.ogg"))
+            self.level_up_sound = pygame.mixer.Sound(level_up_sound_path)
+            self.level_up_sound.set_volume(1.0)
+        except pygame.error as e:
+            print(f"Warning: No se pudo cargar el sonido de level up en {level_up_sound_path}: {e}")
+            self.level_up_sound = None
+
         # Ventana inicial en modo ventana
         self.is_fullscreen = False
         try:
@@ -719,6 +728,8 @@ class PygameRenderer:
                 self._handle_collision("Right", right_rect, ball_rect)
                 collided = True
                 self.score += 1
+                if self.score > 0 and self.score % 5 == 0 and self.level_up_sound:
+                    self.level_up_sound.play()
                 print(f"¡Atrapado con mano derecha! Puntuación: {self.score}")
                 self._reset_ball_position()  # Esto la reseteará a escala 0.2
                 
@@ -726,6 +737,8 @@ class PygameRenderer:
                 self._handle_collision("Left", left_rect, ball_rect)
                 collided = True
                 self.score += 1
+                if self.score > 0 and self.score % 5 == 0 and self.level_up_sound:
+                    self.level_up_sound.play()
                 print(f"¡Atrapado con mano izquierda! Puntuación: {self.score}")
                 self._reset_ball_position()  # Esto la reseteará a escala 0.2
 
