@@ -13,8 +13,17 @@ class PygameRenderer:
                  auto_launch_delay_ms: int = 700,
                  countdown_seconds: int = 3):
         pygame.init()
+        pygame.mixer.init()
         self.width = camera_width
         self.height = camera_height
+
+        # Carga de la música de fondo
+        try:
+            music_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "audio", "showtime.ogg"))
+            pygame.mixer.music.load(music_path)
+            pygame.mixer.music.set_volume(0.5)  # Se ajusta el volumen (0.0 a 1.0)
+        except pygame.error as e:
+            print(f"Warning: No se pudo cargar el archivo de música en {music_path}: {e}")
 
         # Ventana inicial en modo ventana
         self.is_fullscreen = False
@@ -425,6 +434,8 @@ class PygameRenderer:
                     if event.key == pygame.K_ESCAPE:
                         return False
                     if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                        # Iniciar música al salir del menú
+                        pygame.mixer.music.play(-1)
                         # comportamiento configurable: si está activada la pantalla de preparación,
                         # entrar en waiting_start para que el jugador coloque las manos; si no,
                         # iniciar el juego inmediatamente (y opcionalmente auto-lanzar si está configurado).
@@ -493,6 +504,8 @@ class PygameRenderer:
                         self.misses = 0
                         self.game_over = False
                         self._reset_ball_position()
+                        # Reiniciar música
+                        pygame.mixer.music.play(-1)
                         print("Juego reiniciado (Enter).")
                     else:
                         if not self.ball_launching and not self.ball_moving:
@@ -637,6 +650,7 @@ class PygameRenderer:
                     # Verificar si se perdió el juego -> activar game over
                     if self.misses >= self.max_misses:
                         self.game_over = True
+                        pygame.mixer.music.stop()
                         print("¡Juego terminado! Has perdido.")
 
         # Dibujar sobre el canvas lógico (sin cambio)
