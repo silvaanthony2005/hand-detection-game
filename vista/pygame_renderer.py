@@ -43,9 +43,9 @@ class PygameRenderer:
         except pygame.error:
             print(f"Warning: Background image not found at {bg_path}")
         
-        # Crear y cachear una versión desenfocada del fondo (downscale + upscale)
+        # Crear y cachear una versión desenfocada del fondo
         try:
-            blur_scale = 0.06  # ajusta entre 0.02 (más blur) y 0.15 (menos blur)
+            blur_scale = 0.06
             sw = max(1, int(self.width * blur_scale))
             sh = max(1, int(self.height * blur_scale))
             small = pygame.transform.smoothscale(self.background, (sw, sh))
@@ -160,7 +160,7 @@ class PygameRenderer:
         self.game_over_instr_font = pygame.font.Font(None, 20)
         self.game_over_font = pygame.font.Font(None, 72)
         try:
-            go_path = os.path.join(images_dir, "game_over.png")  # coloca la imagen que enviaste como Images/game_over.png
+            go_path = os.path.join(images_dir, "game_over.png")  # coloca la imagen guardada como Images/game_over.png
             img = pygame.image.load(go_path).convert_alpha()
             # Escalar para que encaje en la ventana manteniendo aspecto (95% del área disponible)
             iw, ih = img.get_size()
@@ -183,7 +183,7 @@ class PygameRenderer:
         self.menu_image_rect = None
         self.menu_instr_font = pygame.font.Font(None, 28)
         try:
-            menu_path = os.path.join(images_dir, "menu.png")  # pon la imagen del menú aquí: Images/menu.png
+            menu_path = os.path.join(images_dir, "menu.png")
             mimg = pygame.image.load(menu_path).convert_alpha()
             mw, mh = mimg.get_size()
             if mw == 0 or mh == 0:
@@ -194,13 +194,31 @@ class PygameRenderer:
             self.menu_image = pygame.transform.smoothscale(mimg, (mw2, mh2))
             self.menu_image_rect = self.menu_image.get_rect(center=(self.width // 2, self.height // 2))
         except Exception:
-            # si no existe la imagen, se usará texto simple como menú
             self.menu_image = None
             self.menu_image_rect = None
 
+        # --- Imagen para pantalla de preparación ---
+        self.prep_image = None
+        self.prep_image_rect = None
+        try:
+            prep_path = os.path.join(images_dir, "prep_screen.png")  # Images/prep_screen.png
+            pimg = pygame.image.load(prep_path).convert_alpha()
+            iw, ih = pimg.get_size()
+            if iw == 0 or ih == 0:
+                raise Exception("invalid prep image")
+            # Escalado "cover": cubrir toda la ventana, mantener aspect ratio (puede recortar)
+            scale = max(self.width / iw, self.height / ih)
+            new_w = max(1, int(iw * scale))
+            new_h = max(1, int(ih * scale))
+            self.prep_image = pygame.transform.smoothscale(pimg, (new_w, new_h))
+            # rect centrado; al cubrir la pantalla puede quedar mayor en una dimensión
+            self.prep_image_rect = self.prep_image.get_rect(center=(self.width // 2, self.height // 2))
+        except Exception:
+            # si la imagen falta, dejamos None (fallback mostrará fondo desenfocado con texto)
+            self.prep_image = None
+            self.prep_image_rect = None
+
         # --- Pantalla de preparación / countdown ---
-        # Tras salir del menú el jugador puede colocar manos (waiting_start).
-        # Pulsar ENTER en waiting_start inicia la cuenta regresiva 3..2..1 y luego lanza automáticamente.
         self.waiting_start = False
         self.countdown_active = False
         self.countdown_start_time = 0
@@ -516,21 +534,13 @@ class PygameRenderer:
 
         # Pantalla de preparación (esperando que el jugador coloque las manos)
         if self.waiting_start and not self.countdown_active:
-            if getattr(self, "background_blur", None) is not None:
-                self.canvas.blit(self.background_blur, (0, 0))
-            else:
-                self.canvas.blit(self.background, (0, 0))
-            prompt = self.start_prompt_font.render("Pulsa ENTER para iniciar", True, (255, 255, 255))
-            p_rect = prompt.get_rect(center=(self.width // 2, self.height // 2))
-            box = pygame.Surface((p_rect.width + 20, p_rect.height + 12), pygame.SRCALPHA)
-            box.fill((0, 0, 0, 140))
-            box_rect = box.get_rect(center=p_rect.center)
-            self.canvas.blit(box, box_rect.topleft)
-            self.canvas.blit(prompt, p_rect.topleft)
-            instr = self.menu_instr_font.render("Ajusta tus manos frente a la cámara y pulsa ENTER", True, (220, 220, 220))
-            instr_rect = instr.get_rect(center=(self.width // 2, p_rect.bottom + 24))
-            self.canvas.blit(instr, instr_rect.topleft)
+            # Mostrar la imagen de preparación escalada para llenar la ventana.
+            if self.prep_image is not None:
+                # La imagen ya fue escalada en __init__ tipo "cover"; sólo blitearla centrada
+                self.canvas.blit(self.prep_image, self.prep_image_rect.topleft)
 
+
+            # Presentación y retorno temprano
             if self.is_fullscreen:
                 scaled = pygame.transform.smoothscale(self.canvas, self.scaled_size)
                 self.screen.fill((0, 0, 0))
